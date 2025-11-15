@@ -3,3 +3,4 @@ uvicorn
 psycopg[binary]
 requests
 PyYAML
+python-dotenv
