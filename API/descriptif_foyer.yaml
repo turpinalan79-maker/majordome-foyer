@@ -1,0 +1,322 @@
+membres:
+  - nom: "Alan"
+  - nom: "Florence"
+  - nom: "Arthur"
+  - nom: "Élisa"
+
+pieces:
+
+  - nom: "Sous-sol"
+    etage: "-1"
+    exposition: "nord"
+    zones:
+      - nom: "Buanderie — lessives / étendage / pliage"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 3
+      - nom: "Atelier — rangement / surface de travail"
+        frequence: "mensuelle"
+        priorite_hygiene: 2
+      - nom: "Cave — tri et désencombrement léger"
+        frequence: "mensuelle"
+        priorite_hygiene: 2
+
+  - nom: "Entrée / Couloir"
+    etage: "RDC"
+    type_sol: "carrelage ciment"
+    zones:
+      - nom: "Tapis / paillasson — secouer/aspirer"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 3
+      - nom: "Meuble à chaussures — ordre / dépoussiérage"
+        frequence: "bimensuelle"
+        priorite_hygiene: 2
+      - nom: "Sol — aspirer/laver"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 4
+
+  - nom: "Salon"
+    etage: "RDC"
+    type_sol: "parquet"
+    exposition: "nord"
+    zones:
+      - nom: "Surfaces / table basse — dépoussiérer"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 3
+      - nom: "Sol — aspirer"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 4
+      - nom: "Canapé/fauteuils — coussins / textiles"
+        frequence: "mensuelle"
+        priorite_hygiene: 2
+      - nom: "Vitres — nettoyer"
+        frequence: "mensuelle"
+        priorite_hygiene: 2
+        eviter_pluie: true
+        eviter_nuit: true
+
+  - nom: "Salle à manger"
+    etage: "RDC"
+    type_sol: "parquet"
+    exposition: "sud"
+    zones:
+      - nom: "Table — nettoyer/désinfecter"
+        frequence: "quotidienne"
+        priorite_hygiene: 5
+      - nom: "Sol — aspirer"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 4
+      - nom: "Meubles — dépoussiérer"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 3
+      - nom: "Cheminée (déco) — dépoussiérer"
+        frequence: "mensuelle"
+        priorite_hygiene: 1
+
+  - nom: "Cuisine indépendante"
+    etage: "RDC"
+    type_sol: "carrelage"
+    exposition: "sud"
+    zones:
+      - nom: "Plans de travail — nettoyer/désinfecter"
+        frequence: "quotidienne"
+        priorite_hygiene: 5
+      - nom: "Évier — détartrage/entretien"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 4
+      - nom: "Vaisselle / rangement"
+        frequence: "quotidienne"
+        priorite_hygiene: 4
+      - nom: "Plaque et four — nettoyage rapide"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 4
+      - nom: "Hottes / filtres — dégraissage"
+        frequence: "mensuelle"
+        priorite_hygiene: 3
+      - nom: "Frigo — tri & nettoyage"
+        frequence: "mensuelle"
+        priorite_hygiene: 4
+      - nom: "Poubelles — vider / tri sélectif"
+        frequence: "quotidienne"
+        priorite_hygiene: 5
+        eviter_nuit: false
+      - nom: "Sol — balayer/laver"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 4
+
+  - nom: "WC RDC"
+    etage: "RDC"
+    type_sol: "carrelage ciment"
+    exposition: "est"
+    zones:
+      - nom: "Toilette — cuvette / abattant"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 5
+      - nom: "Lavabo — nettoyage"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 4
+      - nom: "Fenêtre — vitre / rebord intérieur"
+        frequence: "mensuelle"
+        priorite_hygiene: 2
+        eviter_pluie: true
+        eviter_nuit: true
+      - nom: "Poubelle — vider"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 4
+
+  - nom: "Chambre parentale"
+    etage: "1er"
+    type_sol: "parquet"
+    exposition: "nord"
+    zones:
+      - nom: "Changer les draps"
+        frequence: "bimensuelle"
+        priorite_hygiene: 4
+      - nom: "Dépoussiérer (commode, bibelots, cheminée déco)"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 3
+      - nom: "Sol — aspirer"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 4
+      - nom: "Linge sale — descendre"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 3
+
+  - nom: "Salle d’eau parentale"
+    etage: "1er"
+    type_sol: "carreaux ciment"
+    exposition: "nord"
+    zones:
+      - nom: "Douche — parois et carrelage"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 5
+      - nom: "Double vasque — nettoyage"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 4
+      - nom: "WC — cuvette"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 5
+      - nom: "Linge salle de bain — panier"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 3
+
+  - nom: "Bureau"
+    etage: "1er"
+    type_sol: "parquet"
+    exposition: "sud"
+    zones:
+      - nom: "Plan de travail — débarrasser câbles / dépoussiérer"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 3
+      - nom: "Papeterie / documents — ranger"
+        frequence: "mensuelle"
+        priorite_hygiene: 2
+      - nom: "Sol — aspirer"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 3
+
+  - nom: "Chambre d’Émilie"
+    etage: "1er"
+    type_sol: "parquet"
+    exposition: "sud"
+    zones:
+      - nom: "Rangement jouets / bureau"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 3
+      - nom: "Changer les draps"
+        frequence: "bimensuelle"
+        priorite_hygiene: 4
+      - nom: "Sol — aspirer"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 4
+
+  - nom: "Couloir 1er étage"
+    etage: "1er"
+    type_sol: "parquet"
+    zones:
+      - nom: "Armoire linge — ordre / pliage"
+        frequence: "bimensuelle"
+        priorite_hygiene: 2
+      - nom: "Gamelles des chattes — ravitaillement / nettoyage"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 3
+
+  - nom: "Chambre d’Arthur"
+    etage: "2e"
+    type_sol: "parquet"
+    exposition: "nord"
+    zones:
+      - nom: "Rangement jouets / bureau"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 3
+      - nom: "Changer les draps"
+        frequence: "bimensuelle"
+        priorite_hygiene: 4
+      - nom: "Sol — aspirer"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 4
+
+  - nom: "Chambre d’Élisa"
+    etage: "2e"
+    type_sol: "parquet"
+    exposition: "sud"
+    zones:
+      - nom: "Rangement"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 3
+      - nom: "Changer les draps"
+        frequence: "bimensuelle"
+        priorite_hygiene: 4
+      - nom: "Sol — aspirer"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 4
+
+  - nom: "Salle de bain 2e étage"
+    etage: "2e"
+    type_sol: "balatum"
+    exposition: "est"
+    zones:
+      - nom: "Baignoire — nettoyer/détartrer"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 5
+      - nom: "Vasque + miroir — nettoyer"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 4
+      - nom: "Sèche-serviettes — entretien"
+        frequence: "mensuelle"
+        priorite_hygiene: 2
+
+  - nom: "WC 2e étage"
+    etage: "2e"
+    zones:
+      - nom: "Toilette — cuvette / abattant"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 5
+      - nom: "Poubelle — vider"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 4
+
+  - nom: "Terrasse"
+    etage: "Extérieur"
+    exposition: "sud/sud-ouest"
+    zones:
+      - nom: "Balayer / ranger mobilier"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 2
+        eviter_pluie: true
+        eviter_vent: true
+        eviter_nuit: true
+
+  - nom: "Jardin"
+    etage: "Extérieur"
+    exposition: "sud/sud-ouest"
+    zones:
+      - nom: "Pelouse — ramassage gros déchets / jouets"
+        frequence: "hebdomadaire"
+        priorite_hygiene: 2
+        eviter_vent: true
+        eviter_nuit: true
+      - nom: "Plantes — arrosage / soin"
+        frequence: "plurihebdomadaire"
+        priorite_hygiene: 3
+        eviter_gel: true
+        eviter_nuit: true
+      - nom: "Protection gel — voile/paillage (si gel annoncé)"
+        frequence: "occasionnelle"
+        priorite_hygiene: 5
+        eviter_nuit: false
+
+  - nom: "Garage indépendant"
+    etage: "Extérieur"
+    zones:
+      - nom: "Ranger / désencombrer passage"
+        frequence: "mensuelle"
+        priorite_hygiene: 2
+        eviter_vent: true
+        eviter_nuit: true
+      - nom: "Voiture — laver / aspirer"
+        frequence: "bimensuelle"
+        priorite_hygiene: 3
+      - nom: "Rentrer la voiture (avis de vent)"
+        frequence: "occasionnelle"
+        priorite_hygiene: 5
+        eviter_nuit: false
+
+  - nom: "Poubelles (sortie)"
+    etage: "Extérieur"
+    zones:
+      - nom: "Ordures ménagères — sortir (dimanche/jeudi soir)"
+        frequence: "occasionnelle"
+        priorite_hygiene: 5
+        eviter_nuit: false
+      - nom: "Recyclables — sortir (mercredi soir)"
+        frequence: "occasionnelle"
+        priorite_hygiene: 5
+        eviter_nuit: false
+      - nom: "Verre — sortir (lundi soir)"
+        frequence: "occasionnelle"
+        priorite_hygiene: 4
+        eviter_nuit: false
+      - nom: "Encombrants — veille du 1er vendredi"
+        frequence: "occasionnelle"
+        priorite_hygiene: 3
+        eviter_nuit: false
