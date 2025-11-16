@@ -78,10 +78,8 @@ async def liste_pieces():
 @app.get("/taches/prioritaires")
 async def taches_prioritaires(jours: int = 7):
     """
-    Retourne les tâches avec un score de priorité simple.
-    Ici on calcule :
-        score = priorite_base (depuis regle) + priorite_hygiene (depuis tache)
-    On ne tient pas encore compte de l'historique.
+    Retourne les tâches avec un score de priorité simple,
+    en excluant celles faites dans les `jours` derniers jours.
     """
     try:
         with get_db() as conn, conn.cursor(row_factory=dict_row) as cur:
@@ -99,12 +97,18 @@ async def taches_prioritaires(jours: int = 7):
                 FROM tache t
                 JOIN piece p ON p.id_piece = t.id_piece
                 LEFT JOIN regle r ON r.id_tache = t.id_tache
+                LEFT JOIN action a
+                  ON a.id_tache = t.id_tache
+                 AND a.statut = 'faite'
+                 AND a.horodatage_utc >= NOW() - (%s || ' days')::interval
                 WHERE COALESCE(r.active, TRUE) = TRUE
+                  AND a.id_action IS NULL
                 ORDER BY score_priorite DESC, piece, tache;
-            """)
+            """, (jours,))
             return cur.fetchall()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur lecture tâches : {e}")
+
 
 # --------- Journalisation d'une action ---------
 
