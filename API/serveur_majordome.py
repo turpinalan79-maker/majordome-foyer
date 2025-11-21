@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
 import psycopg
 from psycopg.rows import dict_row
@@ -25,12 +25,12 @@ def get_db():
         host=DB_HOST, port=DB_PORT, dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD, sslmode="require"
     )
 
-app = FastAPI(title="Majordome Foyer", version="8.0-prod")
+app = FastAPI(title="Majordome Foyer", version="9.0-explainable")
 
 # --------- MODELES ---------
 
 class Action(BaseModel):
-    personne: str  # Nom affiché (ex: "Alan")
+    personne: str
     piece: str
     tache: str
     commentaire: Optional[str] = None
@@ -51,9 +51,10 @@ class NouvelleTache(BaseModel):
     eviter_gel: bool = False
     eviter_nuit: bool = False
 
-# --------- OUTILS LOGIQUES ---------
+# --------- LOGIQUE MÉTIER ---------
 
 JOURS_MAP = {"lundi": 0, "mardi": 1, "mercredi": 2, "jeudi": 3, "vendredi": 4, "samedi": 5, "dimanche": 6}
+JOURS_INVERSE = {v: k for k, v in JOURS_MAP.items()}
 
 def _get_meteo_data(lat: float, lon: float) -> Dict:
     try:
@@ -69,53 +70,110 @@ def _get_meteo_data(lat: float, lon: float) -> Dict:
     except:
         return {}
 
-def _calculer_score_tache(tache: Dict, contexte_meteo: Dict, jour_actuel_index: int, heure_actuelle: int, mois_actuel: int) -> Optional[int]:
-    # 0. Filtrage par Activation (Sommeil)
+def _analyser_tache(tache: Dict, contexte_meteo: Dict, jour_actuel_index: int, heure_actuelle: int, mois_actuel: int) -> Dict:
+    """
+    Analyse complète d'une tâche.
+    Retourne un dictionnaire avec :
+    - visible (bool) : Doit-elle apparaitre dans les priorités ?
+    - score (int) : Score d'urgence
+    - raison (str) : Explication humaine (Pourquoi elle est là OU pourquoi elle n'est pas là)
+    - echeance (str) : Quand sera-t-elle due ?
+    """
+    res = {"visible": False, "score": 0, "raison": "", "echeance": "Inconnue"}
+
+    # 0. Activation
     if tache["active"] is False:
-        return None
+        res["raison"] = "Tâche ponctuelle en sommeil (déjà faite)."
+        res["echeance"] = "Sur demande"
+        return res
 
-    # 1. Logique NUIT
+    # 1. NUIT
     est_nuit = (heure_actuelle >= 20 or heure_actuelle < 7)
-    if tache["eviter_nuit"] and est_nuit: return None
+    if tache["eviter_nuit"] and est_nuit:
+        res["raison"] = "Reporté : Il fait nuit."
+        res["echeance"] = "Demain matin"
+        return res
 
-    # 2. Logique HIVER
+    # 2. HIVER
     est_hiver = mois_actuel in [12, 1, 2]
     nom_lower = tache["nom"].lower()
     if est_hiver and ("arros" in nom_lower or "tondre" in nom_lower) and tache["eviter_gel"]:
-        return None
+        res["raison"] = "Reporté : Saison hivernale."
+        res["echeance"] = "Printemps"
+        return res
 
-    # 3. Filtrage METEO
-    if tache["eviter_pluie"] and contexte_meteo["pluie"]: return None
-    if tache["eviter_vent"] and contexte_meteo["vent"]: return None
-    if tache["eviter_gel"] and contexte_meteo["gel"]: return None
+    # 3. MÉTÉO
+    if tache["eviter_pluie"] and contexte_meteo["pluie"]:
+        res["raison"] = "Reporté : Il pleut."
+        res["echeance"] = "Dès qu'il fait beau"
+        return res
+    if tache["eviter_vent"] and contexte_meteo["vent"]:
+        res["raison"] = "Reporté : Trop de vent."
+        return res
+    if tache["eviter_gel"] and contexte_meteo["gel"]:
+        res["raison"] = "Reporté : Risque de gel."
+        return res
 
-    # 4. Filtrage JOUR SPECIFIQUE
+    # 4. JOUR SPÉCIFIQUE
     jour_cible_str = (tache["jour_semaine"] or "").lower()
     if jour_cible_str in JOURS_MAP:
         jour_cible_idx = JOURS_MAP[jour_cible_str]
-        if jour_cible_idx != jour_actuel_index: return None
-        return 1000
+        if jour_cible_idx != jour_actuel_index:
+            res["raison"] = f"Planifié pour {jour_cible_str.capitalize()}."
+            # Calcul simple du prochain jour
+            delta = (jour_cible_idx - jour_actuel_index) % 7
+            if delta == 0: delta = 7
+            res["echeance"] = f"Dans {delta} jours ({jour_cible_str})"
+            return res
+        else:
+            res["visible"] = True
+            res["score"] = 1000
+            res["raison"] = f"C'est le jour J ({jour_cible_str}) !"
+            res["echeance"] = "Aujourd'hui"
+            return res
 
-    # 5. Historique & Score
+    # 5. CALCUL HISTORIQUE & RETARD
     intervalle = tache["intervalle"]
     jours_ecoules = tache["jours_ecoules"]
     priorite_base = tache["priorite_base"] or 0
     priorite_hygiene = tache["priorite_hygiene"] or 0
 
-    # --- CAS TÂCHE PONCTUELLE ---
+    # Cas Ponctuel
     if intervalle is None or intervalle == 0:
         if jours_ecoules is None:
-            return priorite_base + (priorite_hygiene * 10)
-        # Masquée si déjà faite, sauf si active=True (réveillée manuellement)
-        return None
+            res["visible"] = True
+            res["score"] = priorite_base + (priorite_hygiene * 10)
+            res["raison"] = "Jamais fait (Ponctuel)"
+            res["echeance"] = "Dès que possible"
+        else:
+            # Cas rare d'une ponctuelle active mais avec historique (réactivée manuellement ?)
+            res["visible"] = True
+            res["score"] = 900
+            res["raison"] = "Ponctuelle réactivée"
+        return res
 
-    # --- CAS TÂCHE RÉCURRENTE ---
-    if jours_ecoules is not None and jours_ecoules == 0: return None
+    # Cas Récurrent
+    if jours_ecoules is not None and jours_ecoules == 0:
+        res["raison"] = "Déjà fait aujourd'hui."
+        res["echeance"] = f"Dans {intervalle} jours"
+        return res
+
     jours_effectifs = jours_ecoules if jours_ecoules is not None else 999
     retard = jours_effectifs - intervalle
-    if retard < 0: return None
+
+    if retard < 0:
+        # Pas encore due
+        res["raison"] = f"À jour (Fait il y a {jours_ecoules}j)."
+        res["echeance"] = f"Dans {abs(retard)} jours"
+        return res
     
-    return priorite_base + (priorite_hygiene * 10) + (retard * 5)
+    # Elle est due !
+    res["visible"] = True
+    res["score"] = priorite_base + (priorite_hygiene * 10) + (retard * 5)
+    res["raison"] = f"En retard de {retard} jours."
+    res["echeance"] = "Maintenant"
+    
+    return res
 
 # --------- ENDPOINTS ---------
 
@@ -132,15 +190,81 @@ async def liste_pieces():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# --- NOUVEL ENDPOINT D'EXPLICATION ---
+@app.get("/taches/infos")
+async def infos_tache(q: str = Query(..., description="Nom de la tâche à analyser")):
+    """
+    Explique POURQUOI une tâche n'est pas prioritaire.
+    """
+    now = datetime.now()
+    jour_index = now.weekday()
+    heure = now.hour
+    mois = now.month
+
+    # 1. Contexte Météo
+    with get_db() as conn, conn.cursor(row_factory=dict_row) as cur:
+        cur.execute("SELECT ville, lat, lon FROM foyer_config WHERE id = 1;")
+        cfg = cur.fetchone() or {}
+    
+    meteo_raw = _get_meteo_data(cfg.get("lat"), cfg.get("lon")) if cfg.get("lat") else {}
+    pluie = (meteo_raw.get("precipitation_sum", [0])[0] or 0)
+    vent = (meteo_raw.get("windspeed_10m_max", [0])[0] or 0)
+    tmin = (meteo_raw.get("temperature_2m_min", [10])[0] or 10)
+    
+    ctx_meteo = {"pluie": pluie > 2.0, "vent": vent > 50.0, "gel": tmin < 2.0}
+
+    # 2. Récupération Tâche(s)
+    sql = """
+    WITH DerniereAction AS (
+        SELECT id_tache, MAX(horodatage_utc) AS date_derniere
+        FROM action WHERE statut = 'faite' GROUP BY id_tache
+    )
+    SELECT 
+        t.id_tache, t.nom, p.nom AS piece,
+        COALESCE(r.intervalle_jours, t.interval_jours) AS intervalle,
+        r.jour_semaine, COALESCE(r.priorite_base, 50) AS priorite_base,
+        r.active, t.priorite_hygiene, t.eviter_pluie, t.eviter_vent, t.eviter_neige, t.eviter_gel, t.eviter_nuit,
+        da.date_derniere,
+        EXTRACT(DAY FROM (NOW() AT TIME ZONE 'Europe/Paris') - da.date_derniere)::int AS jours_ecoules
+    FROM tache t
+    JOIN piece p ON p.id_piece = t.id_piece
+    LEFT JOIN regle r ON r.id_tache = t.id_tache
+    LEFT JOIN DerniereAction da ON da.id_tache = t.id_tache
+    WHERE t.nom ILIKE %s
+    """
+    
+    try:
+        with get_db() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(sql, (f"%{q}%",))
+            rows = cur.fetchall()
+        
+        if not rows:
+            return {"found": False, "message": "Aucune tâche trouvée avec ce nom."}
+
+        resultats = []
+        for row in rows:
+            # On utilise la même fonction d'analyse que pour l'audit
+            analyse = _analyser_tache(row, ctx_meteo, jour_index, heure, mois)
+            resultats.append({
+                "tache": row["nom"],
+                "piece": row["piece"],
+                "statut": "Prioritaire" if analyse["visible"] else "En attente",
+                "explication": analyse["raison"],
+                "prevision": analyse["echeance"],
+                "derniere_fois": f"Il y a {row['jours_ecoules']} jours" if row["jours_ecoules"] is not None else "Jamais"
+            })
+            
+        return {"found": True, "resultats": resultats}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/taches")
 async def lister_taches(
-    q: Optional[str] = Query(None, description="Recherche par nom"),
-    piece: Optional[str] = Query(None, description="Filtrer par pièce"),
-    etat: str = Query("toutes", description="'actives', 'dormantes', ou 'toutes'")
+    q: Optional[str] = Query(None),
+    piece: Optional[str] = Query(None),
+    etat: str = Query("toutes")
 ):
-    """
-    Recherche de tâches (utilisé pour vérifier l'existence avant création).
-    """
     try:
         with get_db() as conn, conn.cursor(row_factory=dict_row) as cur:
             sql = """
@@ -152,19 +276,14 @@ async def lister_taches(
                 WHERE TRUE
             """
             args = []
-            
-            if etat == "dormantes":
-                sql += " AND r.active = FALSE"
-            elif etat == "actives":
-                sql += " AND r.active = TRUE"
-            
+            if etat == "dormantes": sql += " AND r.active = FALSE"
+            elif etat == "actives": sql += " AND r.active = TRUE"
             if piece:
                 sql += " AND p.nom = %s"
                 args.append(piece)
             if q:
                 sql += " AND t.nom ILIKE %s"
                 args.append(f"%{q}%")
-            
             sql += " ORDER BY p.nom, t.nom"
             cur.execute(sql, args)
             return cur.fetchall()
@@ -176,28 +295,17 @@ async def activer_tache(id_tache: int):
     try:
         with get_db() as conn, conn.cursor() as cur:
             cur.execute("UPDATE regle SET active = TRUE WHERE id_tache = %s RETURNING id_regle", (id_tache,))
-            if not cur.fetchone():
-                raise HTTPException(status_code=404, detail="Règle introuvable")
             conn.commit()
-        return {"ok": True, "message": "Tâche réactivée."}
+        return {"ok": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
-# --- AUDIT GLOBAL OU CIBLÉ PAR PIÈCE ---
 @app.get("/majordome/audit")
-async def audit_global(
-    piece: Optional[str] = Query(None, description="Si fourni, ne donne que l'audit de cette pièce")
-):
-    """
-    Le cerveau. 
-    Si 'piece' est spécifié (ex: via une photo), on renvoie toutes les urgences de cette pièce.
-    Sinon, on renvoie le Top 10 global de la maison.
-    """
+async def audit_global(piece: Optional[str] = Query(None)):
     now = datetime.now()
     jour_index = now.weekday()
-    heure_actuelle = now.hour
-    mois_actuel = now.month
+    heure = now.hour
+    mois = now.month
 
     with get_db() as conn, conn.cursor(row_factory=dict_row) as cur:
         cur.execute("SELECT ville, lat, lon FROM foyer_config WHERE id = 1;")
@@ -207,11 +315,7 @@ async def audit_global(
     pluie = (meteo_raw.get("precipitation_sum", [0])[0] or 0)
     vent = (meteo_raw.get("windspeed_10m_max", [0])[0] or 0)
     tmin = (meteo_raw.get("temperature_2m_min", [10])[0] or 10)
-
-    ctx_meteo = {
-        "pluie": pluie > 2.0, "vent": vent > 50.0, "gel": tmin < 2.0,
-        "desc": f"Pluie {pluie}mm, Vent {vent}km/h, Tmin {tmin}°C"
-    }
+    ctx_meteo = {"pluie": pluie > 2.0, "vent": vent > 50.0, "gel": tmin < 2.0, "desc": f"Pluie {pluie}mm"}
 
     sql = """
     WITH DerniereAction AS (
@@ -222,8 +326,7 @@ async def audit_global(
         t.id_tache, t.nom, p.nom AS piece,
         COALESCE(r.intervalle_jours, t.interval_jours) AS intervalle,
         r.jour_semaine, COALESCE(r.priorite_base, 50) AS priorite_base,
-        r.active,
-        t.priorite_hygiene, t.eviter_pluie, t.eviter_vent, t.eviter_neige, t.eviter_gel, t.eviter_nuit,
+        r.active, t.priorite_hygiene, t.eviter_pluie, t.eviter_vent, t.eviter_neige, t.eviter_gel, t.eviter_nuit,
         da.date_derniere,
         EXTRACT(DAY FROM (NOW() AT TIME ZONE 'Europe/Paris') - da.date_derniere)::int AS jours_ecoules
     FROM tache t
@@ -233,7 +336,6 @@ async def audit_global(
     WHERE TRUE
     """
     args = []
-
     if piece:
         sql += " AND p.nom = %s"
         args.append(piece)
@@ -245,18 +347,18 @@ async def audit_global(
 
         resultats = []
         for row in rows:
-            score = _calculer_score_tache(row, ctx_meteo, jour_index, heure_actuelle, mois_actuel)
-            if score is None: continue
-
-            if row["jour_semaine"]: raison = f"Jour J ({row['jour_semaine']})"
-            elif row["active"] and row["intervalle"] is None: raison = "Besoin ponctuel"
-            elif row["jours_ecoules"] is None: raison = "Jamais fait"
-            else: raison = f"Retard de {row['jours_ecoules'] - (row['intervalle'] or 0)} jours"
-
-            resultats.append({
-                "tache": row["nom"], "piece": row["piece"], "score": score, "raison": raison,
-                "type": "Ponctuelle" if row["intervalle"] is None else "Récurrente"
-            })
+            # Utilisation de la fonction centralisée
+            analyse = _analyser_tache(row, ctx_meteo, jour_index, heure, mois)
+            
+            # Pour l'audit, on ne garde QUE ce qui est visible (prioritaire)
+            if analyse["visible"]:
+                resultats.append({
+                    "tache": row["nom"],
+                    "piece": row["piece"],
+                    "score": analyse["score"],
+                    "raison": analyse["raison"],
+                    "type": "Ponctuelle" if row["intervalle"] is None else "Récurrente"
+                })
 
         resultats.sort(key=lambda x: x["score"], reverse=True)
         limite = len(resultats) if piece else 10
@@ -264,57 +366,47 @@ async def audit_global(
         return {
             "meta": {
                 "ville": cfg.get("ville"), "meteo": ctx_meteo["desc"],
-                "contexte": f"Audit de : {piece}" if piece else "Audit Global",
-                "heure": f"{heure_actuelle}h"
+                "contexte": f"Audit: {piece}" if piece else "Audit Global",
             },
             "priorites": resultats[:limite]
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @app.post("/taches")
 async def creer_tache(nouvelle: NouvelleTache):
     try:
         with get_db() as conn, conn.cursor(row_factory=dict_row) as cur:
-            # 1. Pièce
             cur.execute("SELECT id_piece FROM piece WHERE nom = %s", (nouvelle.piece,))
             p = cur.fetchone()
             if not p: raise HTTPException(status_code=404, detail="Pièce inconnue")
             id_piece = p["id_piece"]
-
-            # 2. Check Doublon
+            
+            # Check doublon
             cur.execute("SELECT id_tache FROM tache WHERE id_piece = %s AND LOWER(nom) = LOWER(%s)", (id_piece, nouvelle.tache))
-            if cur.fetchone():
-                raise HTTPException(status_code=409, detail=f"La tâche existe déjà.")
+            if cur.fetchone(): raise HTTPException(status_code=409, detail="Existe déjà.")
 
-            # 3. Ponctuel vs Récurrent
             if nouvelle.frequence.lower() == "ponctuelle":
-                final_interval = None
-                periodicite_regle = "ponctuelle"
+                final_int = None
+                regle_per = "ponctuelle"
             else:
-                final_interval = nouvelle.interval_jours
-                periodicite_regle = nouvelle.periodicite or nouvelle.frequence
+                final_int = nouvelle.interval_jours
+                regle_per = nouvelle.periodicite or nouvelle.frequence
 
-            # 4. Insert Tache
             cur.execute("""
                 INSERT INTO tache (nom, id_piece, frequence, interval_jours, priorite_hygiene,
                                    eviter_pluie, eviter_vent, eviter_neige, eviter_gel, eviter_nuit)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id_tache
-            """, (nouvelle.tache, id_piece, nouvelle.frequence, final_interval, nouvelle.priorite_hygiene,
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id_tache
+            """, (nouvelle.tache, id_piece, nouvelle.frequence, final_int, nouvelle.priorite_hygiene,
                   nouvelle.eviter_pluie, nouvelle.eviter_vent, nouvelle.eviter_neige, nouvelle.eviter_gel, nouvelle.eviter_nuit))
             id_tache = cur.fetchone()["id_tache"]
 
-            # 5. Insert Règle
             cur.execute("""
                 INSERT INTO regle (id_piece, id_tache, periodicite, intervalle_jours, jour_semaine, priorite_base, active)
                 VALUES (%s, %s, %s, %s, %s, %s, TRUE)
-            """, (id_piece, id_tache, periodicite_regle, final_interval, nouvelle.jour_semaine, nouvelle.priorite_base))
-            
+            """, (id_piece, id_tache, regle_per, final_int, nouvelle.jour_semaine, nouvelle.priorite_base))
             conn.commit()
-        return {"ok": True, "message": f"Tâche '{nouvelle.tache}' créée."}
-    except HTTPException: raise
+        return {"ok": True}
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/taches/{id_tache}")
@@ -322,51 +414,35 @@ async def supprimer_tache(id_tache: int):
     try:
         with get_db() as conn, conn.cursor() as cur:
             cur.execute("DELETE FROM tache WHERE id_tache = %s RETURNING nom", (id_tache,))
-            row = cur.fetchone()
-            if not row: raise HTTPException(status_code=404, detail="Tâche introuvable")
+            if not cur.fetchone(): raise HTTPException(status_code=404, detail="Inconnue")
             conn.commit()
-        return {"ok": True, "message": f"Tâche '{row[0]}' supprimée."}
+        return {"ok": True}
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/actions")
 async def enregistrer_action(action: Action):
-    """
-    CORRECTION MAJEURE : Recherche du membre ID.
-    """
     try:
         with get_db() as conn, conn.cursor(row_factory=dict_row) as cur:
-            # 1. Trouver la pièce
             cur.execute("SELECT id_piece FROM piece WHERE nom = %s", (action.piece,))
             p = cur.fetchone()
             if not p: return {"error": "Pièce inconnue"}
             
-            # 2. Trouver la tâche
             cur.execute("SELECT id_tache, interval_jours FROM tache WHERE nom = %s AND id_piece = %s", (action.tache, p['id_piece']))
             t = cur.fetchone()
             if not t: return {"error": "Tâche inconnue"}
 
-            # 3. TROUVER LE MEMBRE (Le correctif demandé)
             cur.execute("SELECT id_membre FROM membre WHERE nom_affiche = %s", (action.personne,))
             m = cur.fetchone()
-            id_membre = m['id_membre'] if m else None
+            id_mbr = m['id_membre'] if m else None
 
-            # 4. Insérer l'action
             cur.execute("""
                 INSERT INTO action (horodatage_utc, id_membre, id_piece, id_tache, statut, commentaire, origine)
                 VALUES (NOW(), %s, %s, %s, 'faite', %s, 'api_majordome')
-            """, (id_membre, p['id_piece'], t['id_tache'], action.commentaire))
+            """, (id_mbr, p['id_piece'], t['id_tache'], action.commentaire))
 
-            # 5. Si Ponctuelle -> Désactiver
             if t['interval_jours'] is None or t['interval_jours'] == 0:
                 cur.execute("UPDATE regle SET active = FALSE WHERE id_tache = %s", (t['id_tache'],))
 
             conn.commit()
         return {"ok": True}
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
-
-# --- COMPATIBILITE ---
-@app.get("/taches/prioritaires")
-async def taches_prioritaires_legacy():
-    """Redirection pour compatibilité si l'ancien endpoint est appelé."""
-    data = await audit_global(None)
-    return data["priorites"]
