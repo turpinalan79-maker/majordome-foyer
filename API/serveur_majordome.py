@@ -95,7 +95,7 @@ def _analyser_tache(tache: Dict, contexte_meteo: Dict, jour_actuel_index: int, h
         return res
 
     # 2. HIVER
-    est_hiver = mois_actuel in [10,12, 1, 2,3]
+    est_hiver = mois_actuel in [10,11,12, 1, 2,3]
     nom_lower = tache["nom"].lower()
     if est_hiver and ("arros" in nom_lower or "tondre" in nom_lower) and tache["eviter_gel"]:
         res["raison"] = "Reporté : Saison hivernale / automnale"
