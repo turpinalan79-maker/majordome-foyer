@@ -361,7 +361,7 @@ async def audit_global(piece: Optional[str] = Query(None)):
                 })
 
         resultats.sort(key=lambda x: x["score"], reverse=True)
-        limite = len(resultats) if piece else 10
+        limite = len(resultats) if piece else 20
 
         return {
             "meta": {
